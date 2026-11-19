@@ -222,6 +222,12 @@ jobs:
         run: |
           git clone --depth=1 "${{ inputs.anykernel_repo }}" AnyKernel3
           cp out/arch/arm64/boot/Image AnyKernel3/Image
+          # matikan cek device, arahkan ke partisi boot (GKI), dan set nama kernel
+          sed -i 's/^do.devicecheck=.*/do.devicecheck=0/' AnyKernel3/anykernel.sh
+          sed -i 's|^BLOCK=.*|BLOCK=boot;|' AnyKernel3/anykernel.sh
+          sed -i 's/^IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=auto;/' AnyKernel3/anykernel.sh
+          sed -i "s/^kernel.string=.*/kernel.string=${KERNEL_NAME}/" AnyKernel3/anykernel.sh
+          grep -nE "^(do.devicecheck|BLOCK|IS_SLOT_DEVICE|kernel.string)" AnyKernel3/anykernel.sh
           [ -f out/arch/arm64/boot/dtb ] && cp out/arch/arm64/boot/dtb AnyKernel3/ || true
           cd AnyKernel3
           rm -rf .git
