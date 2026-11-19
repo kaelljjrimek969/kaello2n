@@ -136,6 +136,64 @@ jobs:
           fi
           ls -la drivers/ | grep -i kernelsu || true
 
+      - name: Fix undefined symbol ksu_pavolia_add_prop
+        run: |
+          python3 - <<'PY'
+          import re, pathlib, sys
+          SYM = "ksu_pavolia_add_prop"
+          TYPES = r"(?:void|int|bool|long|ssize_t|size_t|u8|u16|u32|u64|char\s*\*)"
+          pat = re.compile(
+              r"^[ \t]*(?:extern\s+|static\s+)?(?:inline\s+)?(" + TYPES + r")\s+"
+              + SYM + r"\s*\(([^;{)]*)\)\s*([;{])", re.M | re.S)
+          decl = None
+          defined = False
+          callers = []
+          for p in pathlib.Path(".").rglob("*"):
+              if p.suffix not in (".c", ".h"): continue
+              if ".git" in p.parts or p.parts[0] == "out": continue
+              try: s = p.read_text(errors="ignore")
+              except Exception: continue
+              if SYM not in s: continue
+              callers.append(str(p))
+              for m in pat.finditer(s):
+                  if m.group(3) == "{":
+                      defined = True
+                      print("DEFINISI ditemukan di", p)
+                  elif decl is None:
+                      decl = (str(p), m.group(1).strip(), " ".join(m.group(2).split()))
+          print("file yang menyebut simbol:", callers)
+          if defined:
+              print("Simbol sudah punya definisi, tidak perlu stub")
+              sys.exit(0)
+          if decl is None:
+              print("::warning::Prototype ksu_pavolia_add_prop tidak ketemu, stub tidak dibuat")
+              sys.exit(0)
+          hdr, ret, args = decl
+          print("prototype ditemukan di", hdr, "->", ret, SYM, "(", args, ")")
+          params = []
+          if args and args != "void":
+              for i, a in enumerate(x.strip() for x in args.split(",")):
+                  words = a.replace("*", " * ").split()
+                  last = words[-1] if words else ""
+                  if a.endswith("*") or last in ("int","char","long","short","unsigned","void","bool","size_t","u8","u16","u32","u64","const") or len(words) < 2:
+                      a = a + " a%d" % i
+                  params.append(a)
+          else:
+              params = ["void"]
+          body = "\treturn 0;\n" if ret != "void" and "*" not in ret else ("\treturn NULL;\n" if "*" in ret else "")
+          code = (
+              "#include <linux/kernel.h>\n#include <linux/types.h>\n"
+              '#include "../%s"\n\n' % hdr
+              + "%s %s(%s)\n{\n%s}\n" % (ret, SYM, ", ".join(params), body)
+          )
+          open("kernel/ksu_pavolia_stub.c", "w").write(code)
+          mk = pathlib.Path("kernel/Makefile")
+          t = mk.read_text()
+          if "ksu_pavolia_stub.o" not in t:
+              mk.write_text(t.rstrip("\n") + "\nobj-y += ksu_pavolia_stub.o\n")
+          print("stub dibuat:\n" + code)
+          PY
+
       - name: Konfigurasi kernel
         run: |
           set -e
@@ -175,6 +233,12 @@ jobs:
         run: |
           echo "=== 40 baris error pertama ==="
           grep -nE "error:|fatal error|undefined reference|ld.lld:|\*\*\*" build.log | head -40 || true
+          echo "=== detail undefined symbol (siapa yang memanggil) ==="
+          grep -n -A6 "undefined symbol" build.log | head -40 || true
+          echo "=== lokasi ksu_pavolia_add_prop di source ==="
+          grep -RIn ksu_pavolia_add_prop --include=*.c --include=*.h . | head -20 || true
+          echo "=== isi drivers/kernelsu ==="
+          ls -la drivers/kernelsu 2>/dev/null | head -20 || true
 
       - name: Cek versi kernel
         run: |
