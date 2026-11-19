@@ -42,6 +42,16 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Ambil source SuiKernel (kalau repo ini belum berisi source kernel)
+        run: |
+          if [ ! -f kernel/sched/fair.c ]; then
+            git clone --depth=1 -b suikernel-experimental \
+              https://github.com/LoggingNewMemory/SuiKernel-android12-5.10 /tmp/src
+            rsync -a --exclude '.git' --exclude '.github' /tmp/src/ ./
+          fi
+          test -f kernel/sched/fair.c && echo "source kernel OK"
+          ls
+
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -62,9 +72,9 @@ jobs:
             echo "BORE sudah ada di source, skip patch"
           elif [ -n "${{ inputs.bore_patch_url }}" ]; then
             curl -L "${{ inputs.bore_patch_url }}" -o bore.patch
-            patch -p1 --no-backup-if-mismatch < bore.patch
+            patch -p1 --forward --no-backup-if-mismatch < bore.patch
           elif [ -f patches/bore.patch ]; then
-            patch -p1 --no-backup-if-mismatch < patches/bore.patch
+            patch -p1 --forward --no-backup-if-mismatch < patches/bore.patch
           else
             echo "::error::BORE belum ada dan patch tidak diberikan"
             exit 1
@@ -163,4 +173,3 @@ jobs:
           path: |
             *.zip
             build.log
-            
