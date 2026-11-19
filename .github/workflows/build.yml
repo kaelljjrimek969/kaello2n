@@ -148,8 +148,15 @@ jobs:
           export PATH=$HOME/neutron/bin:$PATH
           export KBUILD_BUILD_USER=Kaelltzyy
           export KBUILD_BUILD_HOST=GitHubAction
+          set -o pipefail
           make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang -j$(nproc --all) 2>&1 | tee build.log
           ls -lh out/arch/arm64/boot/
+
+      - name: Tampilkan error build
+        if: failure()
+        run: |
+          echo "=== 40 baris error pertama ==="
+          grep -nE "error:|fatal error|undefined reference|ld.lld:|\*\*\*" build.log | head -40 || true
 
       - name: Cek versi kernel
         run: |
