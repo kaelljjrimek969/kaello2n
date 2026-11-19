@@ -57,7 +57,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             bc bison flex libssl-dev libelf-dev cpio zip unzip git curl wget \
-            python3 ccache lz4 xz-utils zstd dwarves libncurses-dev build-essential
+            python3 ccache lz4 xz-utils zstd dwarves libncurses-dev build-essential rsync \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
       - name: Install Neutron clang
         run: |
@@ -122,7 +123,7 @@ jobs:
         run: |
           set -e
           export PATH=$HOME/neutron/bin:$PATH
-          MAKE="make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang"
+          MAKE="make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu-"
           $MAKE $DEFCONFIG
 
           C="scripts/config --file out/.config"
@@ -149,7 +150,7 @@ jobs:
           export KBUILD_BUILD_USER=Kaelltzyy
           export KBUILD_BUILD_HOST=GitHubAction
           set -o pipefail
-          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang -j$(nproc --all) 2>&1 | tee build.log
+          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- -j$(nproc --all) 2>&1 | tee build.log
           ls -lh out/arch/arm64/boot/
 
       - name: Tampilkan error build
