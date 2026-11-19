@@ -92,6 +92,16 @@ jobs:
             -e 's/PERFORMANCE/KAELLTZYY/g' \
             -e 's/Performance/Kaelltzyy/g' $DST
 
+          # buang fungsi default/fallback governor biar nggak duplicate symbol
+          python3 - <<'PY'
+          import re
+          p = "drivers/cpufreq/cpufreq_kaelltzyy.c"
+          s = open(p).read()
+          s = re.sub(r"struct cpufreq_governor \*cpufreq_(?:default|fallback)_governor\(void\)\s*\{[^}]*\}\n?", "", s)
+          open(p, "w").write(s)
+          PY
+          grep -n "fallback_governor\|default_governor" $DST || echo "fungsi default/fallback sudah dibuang"
+
           # Makefile
           grep -q cpufreq_kaelltzyy drivers/cpufreq/Makefile || \
             sed -i '/CONFIG_CPU_FREQ_GOV_POWERSAVE/i obj-$(CONFIG_CPU_FREQ_GOV_KAELLTZYY)\t+= cpufreq_kaelltzyy.o' drivers/cpufreq/Makefile
