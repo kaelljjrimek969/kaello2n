@@ -23,7 +23,7 @@ on:
       kana_configs:
         description: "Auto-enable semua config di Kconfig KanaKSUCore"
         type: boolean
-        default: true
+        default: false
 
 env:
   DEFCONFIG: gki_defconfig
@@ -173,7 +173,7 @@ jobs:
         run: |
           set -e
           export PATH=$HOME/neutron/bin:$PATH
-          MAKE="make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu-"
+          MAKE="make ARCH=arm64 LLVM=1 LLVM_IAS=1 O=out CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- CC=clang"
           $MAKE $DEFCONFIG
 
           C="scripts/config --file out/.config"
@@ -185,9 +185,6 @@ jobs:
           # config dari KanaKSUCore (kalau ada)
           if [ "${{ inputs.kana_configs }}" = "true" ] && [ -f drivers/KanaKSUCore/Kconfig ]; then
             for c in $(grep -hoE '^config +[A-Z0-9_]+' drivers/KanaKSUCore/Kconfig | awk '{print $2}'); do
-              case "$c" in
-                *SUS_SU*|*MANUAL_HOOK*|*DEBUG*) echo "SKIP CONFIG_$c (rawan konflik hook/boot)"; continue ;;
-              esac
               echo "enable CONFIG_$c"; $C -e $c
             done
           fi
@@ -202,8 +199,6 @@ jobs:
             none) $C -e LTO_NONE -d LTO_CLANG ;;
           esac
           $MAKE olddefconfig
-          echo "=== config akhir (cek sebelum build) ==="
-          grep -E "CONFIG_(KSU|KPROBES|SCHED_BORE|CPU_FREQ_GOV_KAELLTZYY|LTO_CLANG|CFI_CLANG|MODVERSIONS|TRIM_UNUSED_KSYMS)" out/.config || true
 
       - name: Build kernel
         run: |
@@ -211,7 +206,7 @@ jobs:
           export KBUILD_BUILD_USER=Kaelltzyy
           export KBUILD_BUILD_HOST=GitHubAction
           set -o pipefail
-          make O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- CLANG_TRIPLE=aarch64-linux-gnu- -j$(nproc --all) 2>&1 | tee build.log
+          make ARCH=arm64 LLVM=1 LLVM_IAS=1 O=out CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_COMPAT=arm-linux-gnueabi- CC=clang KCFLAGS="-O3" -j$(nproc --all) Image 2>&1 | tee build.log
           ls -lh out/arch/arm64/boot/
 
       - name: Tampilkan error build
