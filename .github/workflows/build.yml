@@ -15,7 +15,7 @@ on:
       use_bore:
         description: "Pakai patch BORE"
         type: boolean
-        default: false
+        default: true
       use_governor:
         description: "Pakai governor Kaelltzyy"
         type: boolean
