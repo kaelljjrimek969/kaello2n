@@ -15,23 +15,15 @@ on:
       use_bore:
         description: "Pakai patch BORE"
         type: boolean
-        default: true
+        default: false
       use_governor:
         description: "Pakai governor Kaelltzyy"
         type: boolean
         default: true
       kana_configs:
-        description: "Auto-enable config Kconfig KanaKSUCore (tanpa DEBUG/TEST)"
+        description: "Auto-enable semua config di Kconfig KanaKSUCore"
         type: boolean
-        default: false
-      local_version:
-        description: "LOCALVERSION custom. KOSONGKAN supaya uname -r sama dgn stock (vendor module butuh vermagic sama)"
-        required: false
-        default: ""
-      stock_release:
-        description: "uname -r stock (opsional). Kalau diisi, build gagal bila release kernel beda"
-        required: false
-        default: ""
+        default: true
 
 env:
   DEFCONFIG: gki_defconfig
@@ -185,17 +177,17 @@ jobs:
           $MAKE $DEFCONFIG
 
           C="scripts/config --file out/.config"
-          # JANGAN ubah LOCALVERSION by default: vermagic harus sama dgn stock
-          # biar vendor module (storage/display/dll) tetap mau di-load.
-          if [ -n "${{ inputs.local_version }}" ]; then
-            $C --set-str LOCALVERSION "${{ inputs.local_version }}"
-            $C -d LOCALVERSION_AUTO
-          fi
+          # nama kernel
+          $C --set-str LOCALVERSION "-${KERNEL_NAME}"
+          $C -d LOCALVERSION_AUTO
           # KernelSU-Next
           $C -e KSU
           # config dari KanaKSUCore (kalau ada)
           if [ "${{ inputs.kana_configs }}" = "true" ] && [ -f drivers/KanaKSUCore/Kconfig ]; then
-            for c in $(grep -hoE '^config +[A-Z0-9_]+' drivers/KanaKSUCore/Kconfig | awk '{print $2}' | grep -viE 'DEBUG|TEST|SELFTEST'); do
+            for c in $(grep -hoE '^config +[A-Z0-9_]+' drivers/KanaKSUCore/Kconfig | awk '{print $2}'); do
+              case "$c" in
+                *SUS_SU*|*MANUAL_HOOK*|*DEBUG*) echo "SKIP CONFIG_$c (rawan konflik hook/boot)"; continue ;;
+              esac
               echo "enable CONFIG_$c"; $C -e $c
             done
           fi
@@ -210,6 +202,8 @@ jobs:
             none) $C -e LTO_NONE -d LTO_CLANG ;;
           esac
           $MAKE olddefconfig
+          echo "=== config akhir (cek sebelum build) ==="
+          grep -E "CONFIG_(KSU|KPROBES|SCHED_BORE|CPU_FREQ_GOV_KAELLTZYY|LTO_CLANG|CFI_CLANG|MODVERSIONS|TRIM_UNUSED_KSYMS)" out/.config || true
 
       - name: Build kernel
         run: |
@@ -239,13 +233,6 @@ jobs:
       - name: Cek versi kernel
         run: |
           strings out/arch/arm64/boot/Image | grep -m1 "Linux version"
-          REL=$(cat out/include/config/kernel.release)
-          echo "kernel.release = $REL"
-          echo "Cocokkan dengan 'uname -r' stock. Beda = vendor module gagal load = bootloop."
-          if [ -n "${{ inputs.stock_release }}" ] && [ "$REL" != "${{ inputs.stock_release }}" ]; then
-            echo "::error::release '$REL' != stock '${{ inputs.stock_release }}'"; exit 1
-          fi
-          grep -E "CONFIG_(CFI_CLANG|LTO_CLANG|MODVERSIONS|MODULE_SIG|TRIM_UNUSED_KSYMS|SCHED_BORE|KSU)[ =]" out/.config || true
 
       - name: Package AnyKernel3
         run: |
@@ -297,4 +284,3 @@ jobs:
           path: |
             *.zip
             build.log
-            out/.config
