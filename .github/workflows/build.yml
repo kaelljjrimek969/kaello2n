@@ -12,10 +12,30 @@ on:
         description: "URL patch BORE (kosongkan kalau source sudah ada BORE / pakai patches/bore.patch di repo)"
         required: false
         default: "https://github.com/riza220201/itel-rs4-kernel/raw/refs/heads/main/patches/bore-5.10-kmi.patch"
+      use_bore:
+        description: "Pakai patch BORE"
+        type: boolean
+        default: true
+      use_governor:
+        description: "Pakai governor Kaelltzyy"
+        type: boolean
+        default: true
+      kana_configs:
+        description: "Auto-enable semua config di Kconfig KanaKSUCore"
+        type: boolean
+        default: true
       anykernel_repo:
-        description: "Repo AnyKernel3"
+        description: "Repo AnyKernel3 (isi dengan yang dipakai kemarin)"
         required: false
         default: "https://github.com/osm0sis/AnyKernel3"
+      anykernel_branch:
+        description: "Branch AnyKernel3 (kosongkan = default repo)"
+        required: false
+        default: ""
+      patch_anykernel:
+        description: "Paksa edit anykernel.sh (BLOCK=boot, tanpa devicecheck). Matikan kalau AnyKernel sudah disetel sendiri"
+        type: boolean
+        default: false
 
 env:
   DEFCONFIG: gki_defconfig
@@ -68,6 +88,7 @@ jobs:
           $HOME/neutron/bin/clang --version | head -n1
 
       - name: Patch BORE
+        if: ${{ inputs.use_bore }}
         run: |
           if grep -rq "CONFIG_SCHED_BORE" kernel/sched/ init/Kconfig 2>/dev/null; then
             echo "BORE sudah ada di source, skip patch"
@@ -82,6 +103,7 @@ jobs:
           fi
 
       - name: Tambah governor Kaelltzyy (fork performance)
+        if: ${{ inputs.use_governor }}
         run: |
           set -e
           SRC=drivers/cpufreq/cpufreq_performance.c
@@ -172,15 +194,15 @@ jobs:
           # KernelSU-Next
           $C -e KSU
           # config dari KanaKSUCore (kalau ada)
-          if [ -f drivers/KanaKSUCore/Kconfig ]; then
+          if [ "${{ inputs.kana_configs }}" = "true" ] && [ -f drivers/KanaKSUCore/Kconfig ]; then
             for c in $(grep -hoE '^config +[A-Z0-9_]+' drivers/KanaKSUCore/Kconfig | awk '{print $2}'); do
               echo "enable CONFIG_$c"; $C -e $c
             done
           fi
           # BORE
-          $C -e SCHED_BORE || true
+          [ "${{ inputs.use_bore }}" = "true" ] && { $C -e SCHED_BORE || true; }
           # governor Kaelltzyy
-          $C -e CPU_FREQ_GOV_KAELLTZYY
+          [ "${{ inputs.use_governor }}" = "true" ] && $C -e CPU_FREQ_GOV_KAELLTZYY
           # LTO
           case "${{ inputs.lto_mode }}" in
             thin) $C -d LTO_NONE -e LTO_CLANG -e LTO_CLANG_THIN -d LTO_CLANG_FULL ;;
@@ -220,18 +242,26 @@ jobs:
 
       - name: Package AnyKernel3
         run: |
-          git clone --depth=1 "${{ inputs.anykernel_repo }}" AnyKernel3
+          if [ -n "${{ inputs.anykernel_branch }}" ]; then
+            git clone --depth=1 -b "${{ inputs.anykernel_branch }}" "${{ inputs.anykernel_repo }}" AnyKernel3
+          else
+            git clone --depth=1 "${{ inputs.anykernel_repo }}" AnyKernel3
+          fi
+          ls -la AnyKernel3
           cp out/arch/arm64/boot/Image AnyKernel3/Image
-          # matikan cek device, arahkan ke partisi boot (GKI), dan set nama kernel
-          sed -i 's/^do.devicecheck=.*/do.devicecheck=0/' AnyKernel3/anykernel.sh
-          sed -i 's|^BLOCK=.*|BLOCK=boot;|' AnyKernel3/anykernel.sh
-          sed -i 's/^IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=auto;/' AnyKernel3/anykernel.sh
-          sed -i "s/^kernel.string=.*/kernel.string=${KERNEL_NAME}/" AnyKernel3/anykernel.sh
-          grep -nE "^(do.devicecheck|BLOCK|IS_SLOT_DEVICE|kernel.string)" AnyKernel3/anykernel.sh
+          if [ "${{ inputs.patch_anykernel }}" = "true" ]; then
+            # matikan cek device, arahkan ke partisi boot (GKI), dan set nama kernel
+            sed -i 's/^do.devicecheck=.*/do.devicecheck=0/' AnyKernel3/anykernel.sh
+            sed -i 's|^BLOCK=.*|BLOCK=boot;|' AnyKernel3/anykernel.sh
+            sed -i 's/^IS_SLOT_DEVICE=.*/IS_SLOT_DEVICE=auto;/' AnyKernel3/anykernel.sh
+            sed -i "s/^kernel.string=.*/kernel.string=${KERNEL_NAME}/" AnyKernel3/anykernel.sh
+          fi
+          echo "--- setelan anykernel.sh ---"
+          grep -nE "^(do.devicecheck|BLOCK|IS_SLOT_DEVICE|kernel.string|device.name)" AnyKernel3/anykernel.sh || true
           [ -f out/arch/arm64/boot/dtb ] && cp out/arch/arm64/boot/dtb AnyKernel3/ || true
           cd AnyKernel3
           rm -rf .git
-          zip -r9 ../${KERNEL_NAME}-$(date +%Y%m%d-%H%M).zip . -x "*.md"
+          zip -r9 ../${KERNEL_NAME}-bore${{ inputs.use_bore }}-gov${{ inputs.use_governor }}-kana${{ inputs.kana_configs }}-$(date +%Y%m%d-%H%M).zip . -x "*.md"
           cd ..
           ls -lh *.zip
 
